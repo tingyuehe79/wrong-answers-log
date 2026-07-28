@@ -1073,7 +1073,7 @@
         function moduleScopedQuestions() {
           if (state.filter.module === "all") return state.questions;
           return state.questions.filter(function (q) {
-            var m = q.module || "未分类模块";
+            var m = q.module || "言语理解";
             return m === state.filter.module;
           });
         }
@@ -1104,7 +1104,7 @@
           var set = {},
             order = [];
           state.questions.forEach(function (q) {
-            var m = q.module || "未分类模块";
+            var m = q.module || "言语理解";
             if (!set[m]) {
               set[m] = true;
               order.push(m);
@@ -1263,7 +1263,7 @@
 
           modules.forEach(function (m) {
             var count = state.questions.filter(function (q) {
-              return (q.module || "未分类模块") === m;
+              return (q.module || "言语理解") === m;
             }).length;
             var item = document.createElement("div");
             item.className =
@@ -1286,7 +1286,7 @@
         function filteredQuestions() {
           var f = state.filter;
           return state.questions.filter(function (q) {
-            if (f.module !== "all" && (q.module || "未分类模块") !== f.module)
+            if (f.module !== "all" && (q.module || "言语理解") !== f.module)
               return false;
             if (f.status === "wrong" && q.status !== "wrong") return false;
             if (f.status === "correct" && q.status !== "correct") return false;
