@@ -380,7 +380,6 @@
       .module-nav-item {
         display: flex;
         align-items: center;
-        justify-content: space-between;
         gap: 8px;
         padding: 8px 10px;
         border-radius: 8px;
@@ -400,6 +399,7 @@
         color: var(--paper);
       }
       .module-nav-item .mn-name {
+        flex: 1;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -411,6 +411,32 @@
       }
       .module-nav-item.active .mn-count {
         color: rgba(255, 255, 255, 0.65);
+      }
+      .module-nav-item .mn-del {
+        flex: none;
+        opacity: 0;
+        border: none;
+        background: transparent;
+        color: var(--ink-faint);
+        cursor: pointer;
+        font-size: 13px;
+        padding: 2px 3px;
+        line-height: 1;
+        border-radius: 4px;
+      }
+      .module-nav-item:hover .mn-del {
+        opacity: 1;
+      }
+      .module-nav-item .mn-del:hover {
+        color: var(--vermilion);
+        background: rgba(178, 58, 46, 0.1);
+      }
+      .module-nav-item.active .mn-del {
+        color: rgba(255, 255, 255, 0.7);
+      }
+      .module-nav-item.active .mn-del:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.15);
       }
       .text-input {
         width: 100%;
@@ -551,6 +577,12 @@
         background: transparent;
         border: 1px solid var(--gold);
         color: var(--gold);
+      }
+      .tag.clickable {
+        cursor: pointer;
+      }
+      .tag.clickable:hover {
+        filter: brightness(0.92);
       }
       .qcard .mastered-btn {
         flex: none;
@@ -829,6 +861,13 @@
       <aside class="sidebar">
         <h3 style="margin-top: 0">模块 / 试卷</h3>
         <div class="module-nav" id="moduleNav"></div>
+        <button
+          class="side-btn"
+          id="mergeModuleBtn"
+          style="font-size: 12px; margin-top: 8px"
+        >
+          合并模块
+        </button>
 
         <h3>搜索</h3>
         <div class="search-box">
@@ -914,6 +953,34 @@
           <button class="btn" id="moduleNameCancelBtn">取消</button>
           <button class="btn primary" id="moduleNameConfirmBtn">
             确认导入
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 合并模块弹窗 -->
+    <div class="panel-overlay" id="mergeModuleOverlay">
+      <div class="panel" style="max-width: 420px">
+        <h2>合并模块</h2>
+        <p class="hint">
+          点击选中至少两个模块，它们下的题目会合并到你指定的名称里，原模块随之消失。
+        </p>
+        <div
+          class="chip-group"
+          id="mergeModuleChips"
+          style="margin-bottom: 14px"
+        ></div>
+        <input
+          class="text-input"
+          id="mergeModuleNameInput"
+          type="text"
+          placeholder="合并后的模块名称（留空则使用第一个选中的模块名）"
+        />
+        <div class="import-msg" id="mergeModuleMsg"></div>
+        <div class="actions">
+          <button class="btn" id="mergeModuleCancelBtn">取消</button>
+          <button class="btn primary" id="mergeModuleConfirmBtn">
+            确认合并
           </button>
         </div>
       </div>
