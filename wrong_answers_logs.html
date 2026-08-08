@@ -147,6 +147,7 @@
       ]
     </script>
     <script src="./method_classification.js"></script>
+    <script src="./local_image_manifest.js"></script>
 
     <style>
       :root {
@@ -757,6 +758,17 @@
         border-radius: 8px;
         background: #fff;
       }
+      .material-text {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--card);
+        padding: 12px 14px;
+        margin: 8px 0 18px;
+        font-size: 14.5px;
+        line-height: 1.9;
+        color: var(--ink);
+        white-space: pre-wrap;
+      }
       .opt-row {
         display: flex;
         gap: 10px;
@@ -1062,6 +1074,7 @@
         var KEY_TO_LETTER = { key1: "A", key2: "B", key3: "C", key4: "D" };
         var METHOD_CLASSIFICATION_MAP =
           window.METHOD_CLASSIFICATION_MAP || {};
+        var LOCAL_IMAGE_MANIFEST = window.LOCAL_IMAGE_MANIFEST || {};
         var DIFF_LABEL = {
           simple: "简单",
           middle: "中等",
@@ -1097,6 +1110,9 @@
           state.questions.forEach(function (q) {
             if (!q.methodClassification) {
               q.methodClassification = methodClassificationForQuestion(q);
+            }
+            if (q.materialImages && q.materialImages.length) {
+              q.materialImages = q.materialImages.map(localImageSrc);
             }
           });
           state.loaded = true;
@@ -1146,6 +1162,20 @@
             });
         }
 
+        function firstTextFromFields(raw, fieldNames) {
+          for (var i = 0; i < fieldNames.length; i++) {
+            var value = raw[fieldNames[i]];
+            if (!value) continue;
+            var text = extractText(value);
+            if (text) return text;
+          }
+          return "";
+        }
+
+        function localImageSrc(src) {
+          return LOCAL_IMAGE_MANIFEST[src] || src;
+        }
+
         function parseUserAnswer(str) {
           if (!str) return [];
           return String(str)
@@ -1192,12 +1222,30 @@
         }
 
         function normalizeRaw(raw, moduleName) {
+          var materialText =
+            firstTextFromFields(raw, [
+              "materialText",
+              "material_text",
+              "questionMaterial",
+              "question_material",
+              "material",
+              "stem",
+              "content",
+              "article",
+              "passage",
+            ]) || "";
           var materialImages = []
             .concat(extractImageSources(raw.material))
+            .concat(extractImageSources(raw.materialHtml))
+            .concat(extractImageSources(raw.questionMaterial))
+            .concat(extractImageSources(raw.question_material))
             .concat(extractImageSources(raw.content))
+            .concat(extractImageSources(raw.article))
+            .concat(extractImageSources(raw.passage))
             .concat(extractImageSources(raw.stem))
             .concat(extractImageSources(raw.question))
-            .concat(extractImageSources(raw.analysis));
+            .concat(extractImageSources(raw.analysis))
+            .map(localImageSrc);
           var q = {
             id: String(
               raw._id || raw.test_id || Math.random().toString(36).slice(2),
@@ -1215,6 +1263,7 @@
             correctAnswer: (raw.test_ans_right || "").trim().toUpperCase(),
             userAnswerRaw: raw.test_ans || "",
             analysisText: extractText(raw.analysis),
+            materialText: materialText,
             materialImages: materialImages.filter(function (src, idx, arr) {
               return arr.indexOf(src) === idx;
             }),
@@ -1245,6 +1294,7 @@
               norm.importedAt = existing.importedAt || Date.now();
               norm.sourceId = norm.sourceId || existing.sourceId || "";
               norm.testId = norm.testId || existing.testId || "";
+              norm.materialText = norm.materialText || existing.materialText || "";
               norm.materialImages =
                 norm.materialImages && norm.materialImages.length
                   ? norm.materialImages
@@ -1781,8 +1831,12 @@
                 "</span>"
               : "") +
             "</div>" +
-            (q.materialImages && q.materialImages.length
-              ? '<div class="section-label">资料原文</div><div class="material-images" id="materialImages"></div>'
+            (q.materialText || (q.materialImages && q.materialImages.length)
+              ? '<div class="section-label">资料原文</div>' +
+                (q.materialText ? '<div class="material-text"></div>' : "") +
+                (q.materialImages && q.materialImages.length
+                  ? '<div class="material-images" id="materialImages"></div>'
+                  : "")
               : "") +
             '<div class="qtext"></div>' +
             '<div id="optsContainer">' +
@@ -1824,12 +1878,14 @@
             });
           }
 
+          var materialTextEl = panel.querySelector(".material-text");
+          if (materialTextEl) materialTextEl.textContent = q.materialText || "";
           panel.querySelector(".qtext").textContent = q.questionText;
           var materialImagesEl = panel.querySelector("#materialImages");
           if (materialImagesEl && q.materialImages) {
             q.materialImages.forEach(function (src) {
               var img = document.createElement("img");
-              img.src = src;
+              img.src = localImageSrc(src);
               img.alt = "资料原文";
               img.loading = "lazy";
               materialImagesEl.appendChild(img);
