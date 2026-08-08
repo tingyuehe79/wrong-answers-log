@@ -146,6 +146,7 @@
         }
       ]
     </script>
+    <script src="./method_classification.js"></script>
 
     <style>
       :root {
@@ -578,6 +579,11 @@
         border: 1px solid var(--gold);
         color: var(--gold);
       }
+      .tag.method-tag {
+        background: var(--jade-soft);
+        border: 1px solid rgba(63, 109, 92, 0.35);
+        color: var(--jade);
+      }
       .tag.clickable {
         cursor: pointer;
       }
@@ -782,6 +788,24 @@
         margin: 22px 0 8px;
         font-weight: 700;
       }
+      .method-box {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--card);
+        padding: 10px 12px;
+        font-size: 13px;
+        line-height: 1.7;
+        color: var(--ink-soft);
+      }
+      .method-box strong {
+        color: var(--ink);
+      }
+      .method-box .method-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 7px;
+      }
       .detail .analysis {
         font-size: 14px;
         line-height: 1.85;
@@ -916,8 +940,31 @@
         <h2>导入题目数据</h2>
         <p class="hint">
           把从浏览器开发者工具 Network 面板里复制的题目接口返回内容（一个 JSON
-          数组）粘贴到下面，点"导入"。已存在的题目会自动更新，你的复习标记和笔记不会丢失。点击导入后会让你选择归到哪个模块。
+          数组）粘贴到下面，或直接选择本地 JSON
+          文件自动读取，点"导入"。已存在的题目会自动更新，你的复习标记和笔记不会丢失。点击导入后会让你选择归到哪个模块。
         </p>
+        <div
+          style="
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+          "
+        >
+          <label class="btn" for="importFileInput" style="cursor: pointer"
+            >📁 选择本地 JSON 文件</label
+          >
+          <input
+            type="file"
+            id="importFileInput"
+            accept=".json,application/json"
+            style="display: none"
+          />
+          <span
+            id="importFileName"
+            style="font-size: 12.5px; color: var(--ink-soft)"
+          ></span>
+        </div>
         <textarea
           id="importText"
           placeholder='[{"_id":...,"question":...}, ...]'
@@ -999,6 +1046,8 @@
 
         var STORAGE_KEY = "cuoti-questions-v1";
         var KEY_TO_LETTER = { key1: "A", key2: "B", key3: "C", key4: "D" };
+        var METHOD_CLASSIFICATION_MAP =
+          window.METHOD_CLASSIFICATION_MAP || {};
         var DIFF_LABEL = {
           simple: "简单",
           middle: "中等",
@@ -1019,6 +1068,7 @@
           loaded: false,
         };
         var pendingImportRaw = null; // 用户粘贴完数据、点击"导入"之后，在选择/命名模块弹窗确认前，暂存待导入的原始文本
+        var mergeSelectedModules = []; // 合并模块弹窗里，当前被选中（待合并）的模块名列表
 
         // ---------- storage helpers ----------
         // 使用浏览器标准的 localStorage，脱离 Claude 环境后（比如本地打开、部署到自己的服务器）依然可以正常保存数据。
@@ -1030,6 +1080,11 @@
           } catch (e) {
             state.questions = [];
           }
+          state.questions.forEach(function (q) {
+            if (!q.methodClassification) {
+              q.methodClassification = methodClassificationForQuestion(q);
+            }
+          });
           state.loaded = true;
         }
         async function saveQuestions() {
@@ -1078,11 +1133,37 @@
           return user === correct ? "correct" : "wrong";
         }
 
+        function methodClassificationForRaw(raw) {
+          var keys = [raw.id, raw._id, raw.test_id].filter(Boolean);
+          for (var i = 0; i < keys.length; i++) {
+            var found = METHOD_CLASSIFICATION_MAP[String(keys[i])];
+            if (found) return found;
+          }
+          return null;
+        }
+
+        function methodClassificationForQuestion(q) {
+          if (q.methodClassification) return q.methodClassification;
+          var keys = [q.sourceId, q.id, q.testId].filter(Boolean);
+          for (var i = 0; i < keys.length; i++) {
+            var found = METHOD_CLASSIFICATION_MAP[String(keys[i])];
+            if (found) return found;
+          }
+          return null;
+        }
+
+        function primaryMethodLabel(q) {
+          var info = methodClassificationForQuestion(q);
+          return info && info.primary_method ? info.primary_method : "";
+        }
+
         function normalizeRaw(raw, moduleName) {
           var q = {
             id: String(
               raw._id || raw.test_id || Math.random().toString(36).slice(2),
             ),
+            sourceId: raw.id ? String(raw.id) : "",
+            testId: raw.test_id ? String(raw.test_id) : "",
             module: moduleName || "",
             questionText: extractText(raw.question),
             options: {
@@ -1097,6 +1178,7 @@
             difficulty: raw.difficult || "",
             classification: String(raw.classification || ""),
             createDate: raw.create_date || "",
+            methodClassification: methodClassificationForRaw(raw),
           };
           q.userAnswerLetters = parseUserAnswer(q.userAnswerRaw);
           q.status = computeStatus(q);
@@ -1118,6 +1200,12 @@
               norm.note = existing.note || "";
               norm.questionType = existing.questionType || "";
               norm.importedAt = existing.importedAt || Date.now();
+              norm.sourceId = norm.sourceId || existing.sourceId || "";
+              norm.testId = norm.testId || existing.testId || "";
+              norm.methodClassification =
+                norm.methodClassification ||
+                existing.methodClassification ||
+                methodClassificationForQuestion(existing);
               if (!moduleName && existing.module) norm.module = existing.module;
               byId[norm.id] = norm;
               updated++;
@@ -1338,7 +1426,7 @@
             item.innerHTML =
               '<span class="mn-name"></span><span class="mn-count">' +
               count +
-              "</span>";
+              '</span><button class="mn-del" title="删除模块">✕</button>';
             item.querySelector(".mn-name").textContent = m;
             item.onclick = function () {
               state.filter.module = m;
@@ -1346,8 +1434,82 @@
               state.filter.questionType = "all";
               render();
             };
+            item
+              .querySelector(".mn-del")
+              .addEventListener("click", function (e) {
+                e.stopPropagation();
+                deleteModule(m, count);
+              });
             el.appendChild(item);
           });
+        }
+
+        function deleteModule(moduleName, count) {
+          if (
+            !confirm(
+              "确定删除模块「" +
+                moduleName +
+                "」吗？\n该模块下的 " +
+                count +
+                " 道题目将被一并永久删除，此操作不可恢复，建议先导出备份。",
+            )
+          )
+            return;
+          state.questions = state.questions.filter(function (q) {
+            return (q.module || "言语理解") !== moduleName;
+          });
+          if (state.filter.module === moduleName) {
+            state.filter.module = "all";
+            state.filter.difficulty = "all";
+            state.filter.questionType = "all";
+          }
+          saveQuestions();
+          render();
+          showToast("已删除模块「" + moduleName + "」");
+        }
+
+        function openMergeModulePopup() {
+          var modules = distinctModules();
+          if (modules.length < 2) {
+            showToast("至少需要两个模块才能合并");
+            return;
+          }
+          mergeSelectedModules = [];
+          renderMergeModuleChips();
+          document.getElementById("mergeModuleNameInput").value = "";
+          document.getElementById("mergeModuleMsg").textContent = "";
+          document.getElementById("mergeModuleOverlay").classList.add("show");
+        }
+
+        function renderMergeModuleChips() {
+          var chipsEl = document.getElementById("mergeModuleChips");
+          chipsEl.innerHTML = "";
+          distinctModules().forEach(function (m) {
+            var chip = document.createElement("div");
+            chip.className =
+              "chip" +
+              (mergeSelectedModules.indexOf(m) !== -1 ? " active" : "");
+            chip.textContent = m;
+            chip.onclick = function () {
+              var idx = mergeSelectedModules.indexOf(m);
+              if (idx === -1) mergeSelectedModules.push(m);
+              else mergeSelectedModules.splice(idx, 1);
+              renderMergeModuleChips();
+            };
+            chipsEl.appendChild(chip);
+          });
+        }
+
+        function mergeModules(sourceModules, targetName) {
+          var count = 0;
+          state.questions.forEach(function (q) {
+            var m = q.module || "言语理解";
+            if (sourceModules.indexOf(m) !== -1) {
+              q.module = targetName;
+              count++;
+            }
+          });
+          return count;
         }
 
         function filteredQuestions() {
@@ -1409,6 +1571,7 @@
           list.forEach(function (q) {
             var card = document.createElement("div");
             card.className = "qcard";
+            var methodLabel = primaryMethodLabel(q);
             var markCls =
               q.status === "wrong"
                 ? "wrong"
@@ -1435,8 +1598,9 @@
               '<div class="meta">' +
               (q.module ? '<span class="tag module-tag"></span>' : "") +
               (q.questionType ? '<span class="tag type-tag"></span>' : "") +
+              (methodLabel ? '<span class="tag method-tag"></span>' : "") +
               (q.difficulty
-                ? '<span class="tag ' +
+                ? '<span class="tag diff-tag ' +
                   diffTagCls +
                   '">' +
                   (DIFF_LABEL[q.difficulty] || q.difficulty) +
@@ -1453,9 +1617,54 @@
 
             card.querySelector(".snippet").textContent = q.questionText;
             var moduleTag = card.querySelector(".module-tag");
-            if (moduleTag) moduleTag.textContent = q.module;
+            if (moduleTag) {
+              moduleTag.textContent = q.module;
+              moduleTag.classList.add("clickable");
+              moduleTag.title = "查看「" + q.module + "」模块下的题目";
+              moduleTag.addEventListener("click", function (e) {
+                e.stopPropagation();
+                state.filter.module = q.module;
+                state.filter.difficulty = "all";
+                state.filter.questionType = "all";
+                render();
+              });
+            }
+            var methodTag = card.querySelector(".method-tag");
+            if (methodTag) {
+              methodTag.textContent = methodLabel;
+              methodTag.title = "推荐巧算方法：" + methodLabel;
+            }
             var typeTag = card.querySelector(".type-tag");
-            if (typeTag) typeTag.textContent = q.questionType;
+            if (typeTag) {
+              typeTag.textContent = q.questionType;
+              typeTag.classList.add("clickable");
+              typeTag.title = "查看「" + q.questionType + "」题型的题目";
+              typeTag.addEventListener("click", function (e) {
+                e.stopPropagation();
+                state.filter.questionType = q.questionType;
+                render();
+              });
+            }
+            var diffTag = card.querySelector(".diff-tag");
+            if (diffTag) {
+              diffTag.classList.add("clickable");
+              diffTag.title = "查看同难度的题目";
+              diffTag.addEventListener("click", function (e) {
+                e.stopPropagation();
+                state.filter.difficulty = q.difficulty;
+                render();
+              });
+            }
+            var masteredTag = card.querySelector(".tag.mastered");
+            if (masteredTag) {
+              masteredTag.classList.add("clickable");
+              masteredTag.title = "查看已掌握的题目";
+              masteredTag.addEventListener("click", function (e) {
+                e.stopPropagation();
+                state.filter.status = "mastered";
+                render();
+              });
+            }
 
             card.addEventListener("click", function (e) {
               if (e.target.classList.contains("mastered-btn")) return;
@@ -1490,6 +1699,7 @@
           if (!q) return;
           var panel = document.getElementById("detailPanel");
           var letters = ["A", "B", "C", "D"];
+          var methodInfo = methodClassificationForQuestion(q);
           var optsHtml = letters
             .map(function (L) {
               var isCorrect = q.correctAnswer.indexOf(L) !== -1;
@@ -1515,9 +1725,11 @@
           panel.innerHTML =
             '<button class="close-btn" id="detailClose">×</button>' +
             '<div class="meta" style="margin-top:4px;">' +
-            (q.module ? '<span class="tag" id="detailModuleTag"></span>' : "") +
+            (q.module
+              ? '<span class="tag clickable" id="detailModuleTag"></span>'
+              : "") +
             (q.difficulty
-              ? '<span class="tag">' +
+              ? '<span class="tag clickable" id="detailDiffTag">' +
                 (DIFF_LABEL[q.difficulty] || q.difficulty) +
                 "</span>"
               : "") +
@@ -1529,6 +1741,9 @@
             '<div class="section-label">题型标签</div>' +
             '<input class="text-input" id="typeInput" list="typeSuggestions" placeholder="比如“主旨概括题”，输入后会记住供下次自动提示">' +
             '<datalist id="typeSuggestions"></datalist>' +
+            (methodInfo
+              ? '<div class="section-label">巧算判断</div><div class="method-box" id="methodBox"></div>'
+              : "") +
             '<div class="section-label">解析</div>' +
             '<div class="analysis"></div>' +
             '<div class="section-label">我的笔记</div>' +
@@ -1538,7 +1753,26 @@
             "</button>";
 
           var detailModuleTag = panel.querySelector("#detailModuleTag");
-          if (detailModuleTag) detailModuleTag.textContent = q.module;
+          if (detailModuleTag) {
+            detailModuleTag.textContent = q.module;
+            detailModuleTag.title = "查看「" + q.module + "」模块下的题目";
+            detailModuleTag.addEventListener("click", function () {
+              state.filter.module = q.module;
+              state.filter.difficulty = "all";
+              state.filter.questionType = "all";
+              closeDetail();
+              render();
+            });
+          }
+          var detailDiffTag = panel.querySelector("#detailDiffTag");
+          if (detailDiffTag) {
+            detailDiffTag.title = "查看同难度的题目";
+            detailDiffTag.addEventListener("click", function () {
+              state.filter.difficulty = q.difficulty;
+              closeDetail();
+              render();
+            });
+          }
 
           panel.querySelector(".qtext").textContent = q.questionText;
           panel.querySelector(".analysis").textContent =
@@ -1548,6 +1782,39 @@
             .forEach(function (elm, i) {
               elm.textContent = q.options[letters[i]] || "";
             });
+          var methodBox = panel.querySelector("#methodBox");
+          if (methodBox && methodInfo) {
+            var primary = methodInfo.primary_method || "无";
+            var methods =
+              methodInfo.applicable_methods &&
+              methodInfo.applicable_methods.length
+                ? methodInfo.applicable_methods
+                : [];
+            methodBox.innerHTML =
+              "<div><strong>优先方法：</strong><span></span></div>" +
+              "<div><strong>判断依据：</strong><span></span></div>" +
+              "<div><strong>把握度：</strong><span></span></div>" +
+              '<div class="method-list"></div>';
+            methodBox.querySelectorAll("span")[0].textContent = primary;
+            methodBox.querySelectorAll("span")[1].textContent =
+              methodInfo.reason || "";
+            methodBox.querySelectorAll("span")[2].textContent =
+              methodInfo.confidence || "";
+            var listEl = methodBox.querySelector(".method-list");
+            if (methods.length) {
+              methods.forEach(function (m) {
+                var tag = document.createElement("span");
+                tag.className = "tag method-tag";
+                tag.textContent = m;
+                listEl.appendChild(tag);
+              });
+            } else {
+              var none = document.createElement("span");
+              none.className = "tag";
+              none.textContent = "无适用巧算方法";
+              listEl.appendChild(none);
+            }
+          }
           var typeInput = panel.querySelector("#typeInput");
           typeInput.value = q.questionType || "";
           var typeSuggestions = panel.querySelector("#typeSuggestions");
@@ -1558,9 +1825,11 @@
             })
             .join("");
           typeInput.addEventListener("blur", function () {
-            q.questionType = typeInput.value.trim();
+            var next = typeInput.value.trim();
+            if (next === (q.questionType || "")) return;
+            q.questionType = next;
             saveQuestions();
-            renderTypeChips();
+            render();
           });
           var noteInput = panel.querySelector("#noteInput");
           noteInput.value = q.note || "";
@@ -1685,6 +1954,34 @@
         document.getElementById("closeImportBtn").onclick = function () {
           document.getElementById("importOverlay").classList.remove("show");
         };
+        document.getElementById("importFileInput").onchange = function (e) {
+          var file = e.target.files && e.target.files[0];
+          var nameEl = document.getElementById("importFileName");
+          var msg = document.getElementById("importMsg");
+          if (!file) return;
+          if (!/\.json$/i.test(file.name)) {
+            msg.className = "import-msg err";
+            msg.textContent = "请选择 .json 文件。";
+            e.target.value = "";
+            return;
+          }
+          nameEl.textContent = "已选择：" + file.name;
+          var reader = new FileReader();
+          reader.onload = function () {
+            document.getElementById("importText").value = String(
+              reader.result,
+            );
+            msg.className = "import-msg ok";
+            msg.textContent = "已读取文件内容，确认无误后点击下方“导入”。";
+          };
+          reader.onerror = function () {
+            nameEl.textContent = "";
+            msg.className = "import-msg err";
+            msg.textContent = "读取文件失败，请重试。";
+          };
+          reader.readAsText(file, "utf-8");
+          e.target.value = ""; // 允许重复选择同一个文件
+        };
         document.getElementById("doImportBtn").onclick = function () {
           var raw = document.getElementById("importText").value.trim();
           var msg = document.getElementById("importMsg");
@@ -1729,6 +2026,50 @@
               pendingImportRaw = null;
             }
           });
+        document.getElementById("mergeModuleBtn").onclick =
+          openMergeModulePopup;
+        document.getElementById("mergeModuleConfirmBtn").onclick = function () {
+          var msg = document.getElementById("mergeModuleMsg");
+          if (mergeSelectedModules.length < 2) {
+            msg.className = "import-msg err";
+            msg.textContent = "请至少选择两个模块。";
+            return;
+          }
+          var targetName =
+            document.getElementById("mergeModuleNameInput").value.trim() ||
+            mergeSelectedModules[0];
+          var count = mergeModules(mergeSelectedModules, targetName);
+          if (
+            state.filter.module !== "all" &&
+            mergeSelectedModules.indexOf(state.filter.module) !== -1
+          ) {
+            state.filter.module = targetName;
+          }
+          saveQuestions();
+          document
+            .getElementById("mergeModuleOverlay")
+            .classList.remove("show");
+          render();
+          showToast(
+            "已合并 " +
+              mergeSelectedModules.length +
+              " 个模块，共 " +
+              count +
+              " 道题目",
+          );
+        };
+        document.getElementById("mergeModuleCancelBtn").onclick = function () {
+          document
+            .getElementById("mergeModuleOverlay")
+            .classList.remove("show");
+        };
+        document
+          .getElementById("mergeModuleOverlay")
+          .addEventListener("click", function (e) {
+            if (e.target.id === "mergeModuleOverlay") {
+              e.currentTarget.classList.remove("show");
+            }
+          });
         document.getElementById("loadSampleBtn").onclick = function () {
           var raw = document.getElementById("sampleData").textContent;
           doImport(raw, "示例数据");
@@ -1763,6 +2104,9 @@
             closeDetail();
             document
               .getElementById("moduleNameOverlay")
+              .classList.remove("show");
+            document
+              .getElementById("mergeModuleOverlay")
               .classList.remove("show");
           }
         });
