@@ -743,6 +743,20 @@
         white-space: pre-wrap;
         margin: 20px 0 18px;
       }
+      .material-images {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin: 8px 0 18px;
+      }
+      .material-images img {
+        width: 100%;
+        height: auto;
+        display: block;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+      }
       .opt-row {
         display: flex;
         gap: 10px;
@@ -1112,6 +1126,26 @@
           return div.textContent.replace(/\n{3,}/g, "\n\n").trim();
         }
 
+        function extractImageSources(html) {
+          if (!html) return [];
+          var div = document.createElement("div");
+          div.innerHTML = String(html).replace(
+            /<script[\s\S]*?<\/script>/gi,
+            "",
+          );
+          var seen = {};
+          return Array.prototype.slice
+            .call(div.querySelectorAll("img[src]"))
+            .map(function (img) {
+              return img.getAttribute("src");
+            })
+            .filter(function (src) {
+              if (!src || seen[src]) return false;
+              seen[src] = true;
+              return true;
+            });
+        }
+
         function parseUserAnswer(str) {
           if (!str) return [];
           return String(str)
@@ -1158,6 +1192,12 @@
         }
 
         function normalizeRaw(raw, moduleName) {
+          var materialImages = []
+            .concat(extractImageSources(raw.material))
+            .concat(extractImageSources(raw.content))
+            .concat(extractImageSources(raw.stem))
+            .concat(extractImageSources(raw.question))
+            .concat(extractImageSources(raw.analysis));
           var q = {
             id: String(
               raw._id || raw.test_id || Math.random().toString(36).slice(2),
@@ -1175,6 +1215,9 @@
             correctAnswer: (raw.test_ans_right || "").trim().toUpperCase(),
             userAnswerRaw: raw.test_ans || "",
             analysisText: extractText(raw.analysis),
+            materialImages: materialImages.filter(function (src, idx, arr) {
+              return arr.indexOf(src) === idx;
+            }),
             difficulty: raw.difficult || "",
             classification: String(raw.classification || ""),
             createDate: raw.create_date || "",
@@ -1202,6 +1245,10 @@
               norm.importedAt = existing.importedAt || Date.now();
               norm.sourceId = norm.sourceId || existing.sourceId || "";
               norm.testId = norm.testId || existing.testId || "";
+              norm.materialImages =
+                norm.materialImages && norm.materialImages.length
+                  ? norm.materialImages
+                  : existing.materialImages || [];
               norm.methodClassification =
                 norm.methodClassification ||
                 existing.methodClassification ||
@@ -1734,6 +1781,9 @@
                 "</span>"
               : "") +
             "</div>" +
+            (q.materialImages && q.materialImages.length
+              ? '<div class="section-label">资料原文</div><div class="material-images" id="materialImages"></div>'
+              : "") +
             '<div class="qtext"></div>' +
             '<div id="optsContainer">' +
             optsHtml +
@@ -1775,6 +1825,16 @@
           }
 
           panel.querySelector(".qtext").textContent = q.questionText;
+          var materialImagesEl = panel.querySelector("#materialImages");
+          if (materialImagesEl && q.materialImages) {
+            q.materialImages.forEach(function (src) {
+              var img = document.createElement("img");
+              img.src = src;
+              img.alt = "资料原文";
+              img.loading = "lazy";
+              materialImagesEl.appendChild(img);
+            });
+          }
           panel.querySelector(".analysis").textContent =
             q.analysisText || "（暂无解析）";
           panel
